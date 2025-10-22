@@ -1,0 +1,9 @@
+[submodule "Frontend"]
+	path = Frontend
+	url = https://github.com/faly9/Stage_Front_L3.git
+[submodule "backend"]
+	path = backend
+	url = https://github.com/faly9/Stage_Back_L3.git
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/faly9/Stage_Front_L3.git
