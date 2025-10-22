@@ -1,98 +1,126 @@
 name: CI - Django + React + Redis + MySQL + Docker Hub
 
 on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
+push:
+branches: ["main"]
+pull_request:
+branches: ["main"]
 
 jobs:
-  build-test:
-    runs-on: ubuntu-latest
+build-test:
+runs-on: ubuntu-latest
 
-    env:
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+# Keep variables needed by the Python steps and Docker Login steps here.
+# IMPORTANT: The MySQL connection credentials (DATABASE, USER, PASSWORD) 
+# must be available here for 'python manage.py migrate' and 'test' steps.
+env:
+  SECRET_KEY: ${{ secrets.SECRET_KEY }}
+  # Removing MYSQL_ROOT_PASSWORD from here as it's only needed by the service container
+  MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+  MYSQL_USER: ${{ secrets.MYSQL_USER }}
+  MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+  EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
+  EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+services:
+  mysql:
+    image: mysql:8.0
+    # Environment variables MUST be defined here for the container to initialize!
+    environment:
+      # This variable allows the MySQL container to initialize
       MYSQL_ROOT_PASSWORD: faly09/+/
+      # These variables configure the database and user upon first run
       MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
       MYSQL_USER: ${{ secrets.MYSQL_USER }}
       MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
-      EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    ports:
+      - 3306:3306
+    options: >-
+      --health-cmd="mysqladmin ping -h localhost"
+      --health-interval=10s
+      --health-timeout=5s
+      --health-retries=5
 
-    services:
-      mysql:
-        image: mysql:8.0
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+    options: >-
+      --health-cmd="redis-cli ping"
+      --health-interval=10s
+      --health-timeout=5s
+      --health-retries=5
 
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+steps:
+  - uses: actions/checkout@v4
+    with:
+      submodules: true
 
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
+  - uses: actions/setup-python@v5
+    with:
+      python-version: "3.12"
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+  - name: Installer backend
+    working-directory: ./backend
+    run: pip install -r requirements.txt
 
-      - name: Installer backend
-        working-directory: ./backend
-        run: pip install -r requirements.txt
+  - name: Wait for MySQL to be ready
+    # Wait up to 60 seconds for the service to become healthy
+    run: |
+      for i in 1 2 3 4 5 6; do
+        if docker exec $(docker ps -q --filter name=mysql) mysqladmin ping -h 127.0.0.1 -u root -pfaly09/+/ > /dev/null 2>&1; then
+          echo "MySQL is ready!"
+          exit 0
+        fi
+        echo "Waiting for MySQL... (Try $i/6)"
+        sleep 10
+      done
+      echo "MySQL failed to start."
+      exit 1
+  
+  - name: Migrations Django
+    working-directory: ./backend
+    # This step uses the environment variables defined in the job-level 'env'
+    run: python manage.py migrate
 
-      - name: Migrations Django
-        working-directory: ./backend
-        run: python manage.py migrate
+  - name: Tests backend
+    working-directory: ./backend
+    run: |
+      # Start Daphne in the background
+      daphne -b 0.0.0.0 -p 8000 backend.asgi:application &
+      # Run tests
+      python manage.py test
 
-      - name: Tests backend
-        working-directory: ./backend
-        run: |
-          daphne -b 0.0.0.0 -p 8000 backend.asgi:application &
-          python manage.py test
+  - uses: actions/setup-node@v4
+    with:
+      node-version: "20"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+  - name: Installer frontend
+    working-directory: ./frontend
+    run: npm install
 
-      - name: Installer frontend
-        working-directory: ./frontend
-        run: npm install
+  - name: Build frontend
+    working-directory: ./frontend
+    env:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+      VITE_API_DOCKER: http://backend:8000
+      VITE_WS_DOCKER: ws://backend:8000
+    run: npm run build
 
-      - name: Build frontend
-        working-directory: ./frontend
-        env:
-          VITE_API_URL: http://localhost:8000
-          VITE_WS_URL: ws://localhost:8000
-          VITE_API_DOCKER: http://backend:8000
-          VITE_WS_DOCKER: ws://backend:8000
-        run: npm run build
+  - uses: docker/login-action@v3
+    with:
+      username: ${{ secrets.DOCKERHUB_USERNAME }}
+      password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+  - name: Build & push backend
+    run: |
+      docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/freelance-backend:latest ./backend
+      docker push ${{ secrets.DOCKERHUB_USERNAME }}/freelance-backend:latest
 
-      - name: Build & push backend
-        run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/freelance-backend:latest ./backend
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/freelance-backend:latest
-
-      - name: Build & push frontend
-        run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/freelance-frontend:latest ./frontend
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/freelance-frontend:latest
+  - name: Build & push frontend
+    run: |
+      docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/freelance-frontend:latest ./frontend
+      docker push ${{ secrets.DOCKERHUB_USERNAME }}/freelance-frontend:latest
