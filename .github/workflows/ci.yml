@@ -1,0 +1,112 @@
+name: CI - Django + React + Redis + MySQL + Docker Hub
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -p${{ secrets.MYSQL_ROOT_PASSWORD }}"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DEBUG: False
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      DB_HOST: 127.0.0.1
+      DB_NAME: ${{ secrets.MYSQL_DATABASE }}
+      DB_USER: ${{ secrets.MYSQL_USER }}
+      DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      DB_PORT: 3306
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
+      EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
+
+    steps:
+      - name: 🧩 Checkout du code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🐍 Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 📦 Installer dépendances backend
+        working-directory: ./backend
+        run: pip install -r requirements.txt
+
+      - name: 🔧 Lancer migrations Django
+        working-directory: ./backend
+        run: python manage.py migrate
+
+      - name: 🧪 Tests backend Django (Daphne inclus)
+        working-directory: ./backend
+        run: |
+          daphne -b 0.0.0.0 -p 8000 backend.asgi:application &
+          python manage.py test
+
+      - name: 🧰 Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 📦 Installer dépendances frontend
+        working-directory: ./frontend
+        run: npm install
+
+      - name: 🔍 Tests et build frontend
+        working-directory: ./frontend
+        env:
+          VITE_API_URL: http://localhost:8000
+          VITE_WS_URL: ws://localhost:8000
+          VITE_API_DOCKER: http://backend:8000
+          VITE_WS_DOCKER: ws://backend:8000
+        run: npm run build
+
+      # -----------------------
+      # Docker Hub: Build & Push
+      # -----------------------
+      - name: 🐳 Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🏗️ Build & Push backend (Daphne)
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/freelance-backend:latest ./backend
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/freelance-backend:latest
+
+      - name: 🏗️ Build & Push frontend
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/freelance-frontend:latest ./frontend
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/freelance-frontend:latest
