@@ -3,5 +3,5 @@ kind: ConfigMap
 metadata:
   name: frontend-config
 data:
-  VITE_API_URL: "http://backend:8000"
-  VITE_WS_URL: "ws://backend:8000"
+  VITE_API_URL: "http://192.168.58.2:30000"  # NodePort de Django
+  VITE_WS_URL: "ws://192.168.58.2:30000"

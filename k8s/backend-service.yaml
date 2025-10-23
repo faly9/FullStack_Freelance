@@ -3,9 +3,10 @@ kind: Service
 metadata:
   name: backend
 spec:
+  type: NodePort
   selector:
     app: django-backend
   ports:
     - port: 8000
       targetPort: 8000
-  type: ClusterIP
+      nodePort: 30000
