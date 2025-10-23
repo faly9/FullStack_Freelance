@@ -3,16 +3,15 @@ kind: Ingress
 metadata:
   name: freelance-ingress
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
     - host: freelance.local
       http:
         paths:
-          # --- Frontend React (SPA) ---
-          - path: /(?!auth|etr|msn|frl|ptl|ws|static|media)(.*)
+          # --- Frontend React (toutes les routes SPA) ---
+          - path: /
             pathType: Prefix
             backend:
               service:
@@ -20,8 +19,8 @@ spec:
                 port:
                   number: 80
 
-          # --- Backend Django ---
-          - path: /(auth|etr|msn|frl|ptl)(/|$)(.*)
+          # --- Backend Django : APIs ---
+          - path: /auth/
             pathType: Prefix
             backend:
               service:
@@ -29,8 +28,7 @@ spec:
                 port:
                   number: 8000
 
-          # --- WebSocket Django Channels ---
-          - path: /ws(/|$)(.*)
+          - path: /etr/
             pathType: Prefix
             backend:
               service:
@@ -38,8 +36,7 @@ spec:
                 port:
                   number: 8000
 
-          # --- Fichiers statiques ---
-          - path: /static(/|$)(.*)
+          - path: /msn/
             pathType: Prefix
             backend:
               service:
@@ -47,8 +44,41 @@ spec:
                 port:
                   number: 8000
 
-          # --- Médias uploadés ---
-          - path: /media(/|$)(.*)
+          - path: /frl/
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+
+          - path: /ptl/
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+
+          # --- WebSockets Django Channels ---
+          - path: /ws/
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+
+          # --- Fichiers statiques et médias ---
+          - path: /static/
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+
+          - path: /media/
             pathType: Prefix
             backend:
               service:
