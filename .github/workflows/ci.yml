@@ -143,10 +143,18 @@ jobs:
 
       - name: 🚀 Déployer les Deployments
         run: |
+          kubectl apply -f k8s/mysql-deployment.yaml
+          kubectl apply -f k8s/mysql-service.yaml
+          
           kubectl apply -f k8s/backend-deployment.yaml
+          kubectl apply -f k8s/backend-service.yaml
+
           kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/frontend-service.yaml
+
+          kubectl apply -f k8s/ingress.yaml
 
       - name: 🔄 Redéployer pods avec les nouvelles images
         run: |
           kubectl rollout restart deployment django-backend
-          kubectl rollout restart deployment react-frontend# -----------------------------
+          kubectl rollout restart deployment react-frontend
