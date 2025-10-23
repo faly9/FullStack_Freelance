@@ -3,5 +3,7 @@ kind: ConfigMap
 metadata:
   name: frontend-config
 data:
-  VITE_API_URL: "http://freelance.local:30000"  # NodePort de Django
+  VITE_API_URL: "http://freelance.local:30000"     # accès externe depuis Windows
   VITE_WS_URL: "ws://freelance.local:30000"
+  VITE_API_DOCKER: "http://backend:8000"           # accès interne entre containers
+  VITE_WS_DOCKER: "ws://backend:8000"
