@@ -153,6 +153,8 @@ jobs:
           kubectl apply -f k8s/frontend-deployment.yaml
           kubectl apply -f k8s/frontend-service.yaml
 
+          kubectl apply -f k8s/ingress.yaml
+
       - name: 🔄 Redéployer pods avec les nouvelles images
         run: |
           kubectl rollout restart deployment django-backend
