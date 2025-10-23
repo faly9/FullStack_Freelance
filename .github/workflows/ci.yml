@@ -20,7 +20,6 @@ jobs:
       DB_USER: ${{ secrets.MYSQL_USER }}
       DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
       DB_HOST: 127.0.0.1
-
       EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
       EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -115,7 +114,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+ 
       - name: 🏗️ Build et push du backend
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/freelance-backend:latest ./backend
@@ -125,3 +124,29 @@ jobs:
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/freelance-frontend:latest ./frontend
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/freelance-frontend:latest
+
+    # -----------------------------
+  # Job 2 : Déploiement (CD)
+  # -----------------------------
+  deploy:
+    runs-on: self-hosted      # ton runner local avec Minikube
+    needs: build-test          # attendre que CI soit terminé
+    steps:
+      - name: 🧩 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔑 Appliquer Secrets et ConfigMaps
+        run: |
+          kubectl apply -f k8s/backend-secret.yaml
+          kubectl apply -f k8s/backend-configmap.yaml
+          kubectl apply -f k8s/frontend-configmap.yaml
+
+      - name: 🚀 Déployer les Deployments
+        run: |
+          kubectl apply -f k8s/backend-deployment.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+
+      - name: 🔄 Redéployer pods avec les nouvelles images
+        run: |
+          kubectl rollout restart deployment django-backend
+          kubectl rollout restart deployment react-frontend# -----------------------------

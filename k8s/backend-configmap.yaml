@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  DEBUG: "True"
+  DB_HOST: "mysql"
+  DB_NAME: "freelance"
+  DB_USER: "faly"
+  DB_PORT: "3306"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
