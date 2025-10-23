@@ -105,8 +105,6 @@ jobs:
         env:
           VITE_API_URL: http://localhost:8000
           VITE_WS_URL: ws://localhost:8000
-          VITE_API_DOCKER: http://backend:8000
-          VITE_WS_DOCKER: ws://backend:8000
         run: npm run build
 
       - name: 🐳 Connexion à Docker Hub

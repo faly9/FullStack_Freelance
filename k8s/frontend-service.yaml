@@ -4,9 +4,9 @@ metadata:
   name: frontend
 spec:
   selector:
-    app: react-frontend
+    app: frontend
   ports:
-    - port: 5173
-      targetPort: 5173
+    - port: 80
+      targetPort: 80
       nodePort: 32157
   type: NodePort
