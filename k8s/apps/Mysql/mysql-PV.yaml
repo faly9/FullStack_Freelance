@@ -5,7 +5,7 @@ metadata:
   namespace: freelance
 spec:
   capacity:
-    storage: 2Gi
+    storage: 5Gi
   accessModes:
     - ReadWriteOnce
   hostPath:
