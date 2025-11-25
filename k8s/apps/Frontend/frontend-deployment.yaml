@@ -33,7 +33,7 @@ spec:
           ']
       containers:
         - name: frontend
-          image: faly9/freelance-frontend:latest
+          image: us-central1-docker.pkg.dev/soutenance-479118/freelance-repo/frontend-app:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80
@@ -50,8 +50,6 @@ spec:
             - name: frontend-config
               mountPath: /usr/share/nginx/html/config.json
               subPath: config.json
-            - name: media-storage
-              mountPath: /usr/share/nginx/html/media
       volumes:
         - name: nginx-config
           configMap:
@@ -59,6 +57,4 @@ spec:
         - name: frontend-config
           configMap:
             name: frontend-config-json
-        - name: media-storage
-          persistentVolumeClaim:
-            claimName: media-pvc
+       

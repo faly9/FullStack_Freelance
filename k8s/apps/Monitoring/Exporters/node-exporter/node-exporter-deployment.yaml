@@ -21,7 +21,7 @@ spec:
               cpu: "50m"
             limits:
               memory: "200Mi"
-              cpu: "100m"
+              cpu: "60m"
           ports:
             - containerPort: 9100
               name: metrics

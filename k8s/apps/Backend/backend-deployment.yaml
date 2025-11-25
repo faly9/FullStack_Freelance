@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: django-backend
-          image: faly9/freelance-backend:latest
+          image: us-central1-docker.pkg.dev/soutenance-479118/freelance-repo/backend-app:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -31,10 +31,15 @@ spec:
                 name: backend-config
             - secretRef:
                 name: backend-secret
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /secrets/key.json
           volumeMounts:
-            - name: media-storage
-              mountPath: /app/media 
+            - name: gcs-credentials
+              mountPath: /secrets
+              readOnly: true
       volumes:
-        - name: media-storage
-          persistentVolumeClaim:
-            claimName: media-pvc 
+        - name: gcs-credentials
+          secret:
+            secretName: gcs-credentials
+         
