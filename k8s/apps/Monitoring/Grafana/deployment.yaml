@@ -15,6 +15,22 @@ spec:
       labels:
         app: grafana
     spec:
+
+      # 1️⃣ Fixe les permissions sur le volume AVANT de démarrer Grafana
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ["sh", "-c", "chmod -R 777 /var/lib/grafana"]
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+
+      # 2️⃣ Autorise Grafana à écrire dans le volume
+      securityContext:
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+
       containers:
         - name: grafana
           image: grafana/grafana:latest
@@ -25,37 +41,21 @@ spec:
             limits:
               memory: "300Mi"
               cpu: "200m"
+
           ports:
             - containerPort: 3000
+
           env:
             - name: GF_SECURITY_ADMIN_USER
               value: "admin"
             - name: GF_SECURITY_ADMIN_PASSWORD
               value: "admin"
-          volumeMounts:
-            # 1️⃣ Dashboards JSON
-            # - name: grafana-dashboards
-            #   mountPath: /var/lib/grafana/dashboards
 
-            # 2️⃣ Fichier de provisioning YAML
-            # - name: grafana-provisioning
-            #   mountPath: /etc/grafana/provisioning/dashboards
-              
-            # 3️⃣ Stockage persistant
+          volumeMounts:
             - name: grafana-storage
               mountPath: /var/lib/grafana
+
       volumes:
-        # PVC pour les données
         - name: grafana-storage
           persistentVolumeClaim:
             claimName: grafana-pvc
-
-        # ConfigMap contenant les dashboards JSON
-        # - name: grafana-dashboards
-        #   configMap:
-        #     name: grafana-dashboards
-
-        # ConfigMap contenant le fichier dashboards.yaml (provisioning)
-        # - name: grafana-provisioning
-        #   configMap:
-        #     name: grafana-provisioning
