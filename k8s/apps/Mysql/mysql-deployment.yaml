@@ -31,10 +31,10 @@ spec:
           resources:
             requests:
               memory: "512Mi"
-              cpu: "400m"
+              cpu: "300m"
             limits:
               memory: "1Gi"
-              cpu: "512m" 
+              cpu: "400m" 
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql
