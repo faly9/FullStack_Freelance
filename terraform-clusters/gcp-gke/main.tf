@@ -9,16 +9,6 @@ resource "google_container_cluster" "gke_cluster" {
     channel = "REGULAR"
   }
 
-  maintenance_policy {
-    recurring_window {
-      window {
-        days_of_week = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-        start_time    = "00:00"
-        end_time      = "23:59"
-      }
-    }
-  }
-
   network    = "default"
   subnetwork = "default"
 }
