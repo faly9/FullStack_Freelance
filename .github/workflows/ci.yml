@@ -1,3 +1,10 @@
+name: CI/CD - Django + React + GKE + Terraform
+on: 
+ push: 
+  branches: ["main"] 
+ pull_request: 
+  branches: ["main"]
+
 jobs:
   # -----------------------------
   # 🔍 JOB 1 : TESTS (CI)
