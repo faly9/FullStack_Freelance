@@ -85,13 +85,13 @@ jobs:
           # Utilisation des variables d'environnement définies dans le 'job' env
           # La connexion est faite avec l'utilisateur non-root pour les tests.
           set +e # Ne pas sortir immédiatement en cas d'erreur de connexion
-          for i in {1..30}; do
+          for i in {1..40}; do
             if mysqladmin ping -h mysql -u"$DB_USER" -p"$DB_PASSWORD" > /dev/null 2>&1; then
               echo "✅ MySQL ready"
               exit 0 # Succès
             fi
             echo "⏳ MySQL not ready ($i/30)"
-            sleep 2 # Réduction du sleep pour ne pas dépasser le timeout de 5 minutes
+            sleep 3 # Réduction du sleep pour ne pas dépasser le timeout de 5 minutes
           done
           echo "❌ MySQL failed to start"
           exit 1 # Échec après le loop
