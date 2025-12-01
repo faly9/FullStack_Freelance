@@ -9,51 +9,15 @@ jobs:
   ci-tests:
     runs-on: ubuntu-latest
     env:
-      # Variables d'environnement pour l'application Django
-      # Assurez-vous que les variables sensibles sont stockées dans GitHub Secrets
+      # Variables conservées (non liées à la base de données)
       IMAGE_TAG: ${{ github.run_number }}
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      DB_NAME: ${{ secrets.MYSQL_DATABASE }}
-      DB_USER: ${{ secrets.MYSQL_USER }}
-      DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      # L'hôte pour le service MySQL dans GitHub Actions est son nom de service, ici 'mysql'
-      DB_HOST: mysql 
-      # Ajout des variables d'environnement de l'email pour les tests si nécessaire
       EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
       EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
       
-      # Variables pour le script d'attente/connexion MySQL
-      MYSQL_USER: ${{ secrets.MYSQL_USER }}
-      MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }} # Maintenu pour le service
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          # Les variables ci-dessous sont requises pour l'initialisation du conteneur
-          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
-          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
-          MYSQL_USER: ${{ secrets.MYSQL_USER }}
-          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-        ports:
-          - 3306:3306
-        # Les options health-check sont correctes
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD}"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+    # SUPPRIMÉ : Le bloc 'services' complet (MySQL et Redis ont été retirés)
+    # Les tests backend utiliseront SQLite en mémoire.
+    # Les tests frontend sont isolés.
 
     steps:
       # -------------------------
@@ -65,7 +29,7 @@ jobs:
           submodules: true
 
       # -------------------------
-      # Backend setup
+      # Backend setup (Tests Django)
       # -------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -76,41 +40,18 @@ jobs:
         working-directory: ./backend
         run: pip install -r requirements.txt
       
-      # NOTE: Si vous utilisez les health checks pour les services, cette attente manuelle
-      # n'est en théorie plus nécessaire, mais elle est conservée ici avec la correction
-      # des variables pour plus de robustesse.
-      - name: ⏳ Wait for MySQL to be ready
-        run: |
-          echo "⏳ Waiting for MySQL to be ready..."
-          # Utilisation des variables d'environnement définies dans le 'job' env
-          # La connexion est faite avec l'utilisateur non-root pour les tests.
-          set +e # Ne pas sortir immédiatement en cas d'erreur de connexion
-          for i in {1..40}; do
-            if mysqladmin ping -h mysql -u"$DB_USER" -p"$DB_PASSWORD" > /dev/null 2>&1; then
-              echo "✅ MySQL ready"
-              exit 0 # Succès
-            fi
-            echo "⏳ MySQL not ready ($i/30)"
-            sleep 3 # Réduction du sleep pour ne pas dépasser le timeout de 5 minutes
-          done
-          echo "❌ MySQL failed to start"
-          exit 1 # Échec après le loop
-        env:
-          # On passe explicitement les variables pour le script
-          DB_USER: ${{ env.DB_USER }}
-          DB_PASSWORD: ${{ env.DB_PASSWORD }}
-          
-      - name: Run Migrations
-        working-directory: ./backend
-        run: python manage.py migrate
+      # SUPPRIMÉ : L'étape 'Wait for MySQL' est inutile.
+      # SUPPRIMÉ : L'étape 'Run Migrations' est inutile, 
+      # car Django exécute automatiquement les migrations 
+      # sur la base de données de test en mémoire (SQLite).
 
       - name: Run Backend Tests
         working-directory: ./backend
-        # Le 'test' de Django gère l'environnement de test et la base de données
+        # Django exécute les tests sur une base de données de test SQLite en mémoire
         run: python manage.py test
 
       # -------------------------
-      # Frontend setup
+      # Frontend setup (Tests React)
       # -------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -123,7 +64,7 @@ jobs:
 
       - name: Run Frontend Tests
         working-directory: ./frontend
-        # Ajout de l'option pour s'assurer que les tests s'exécutent en mode CI non-interactif
+        # Assurez-vous que les tests s'exécutent en mode CI non-interactif
         run: npm run test -- --ci --watchAll=false 
 
       - name: Build Frontend
