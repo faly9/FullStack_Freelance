@@ -57,26 +57,26 @@ jobs:
         working-directory: ./backend
         run: pip install -r requirements.txt
 
-      # - name: Wait for MySQL
-      #   run: |
-      #     echo "⏳ Waiting for MySQL to be ready..."
-      #     for i in {1..30}; do
-      #       if mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
-      #         echo "✅ MySQL ready"
-      #         break
-      #       fi
-      #       echo "⏳ MySQL not ready ($i/30)"
-      #       sleep 5
-      #     done
+      - name: Wait for MySQL
+        run: |
+          echo "⏳ Waiting for MySQL to be ready..."
+          for i in {1..150}; do
+            if mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
+              echo "✅ MySQL ready"
+              break
+            fi
+            echo "⏳ MySQL not ready ($i/150)"
+            sleep 5
+          done
 
-      #     if ! mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
-      #       echo "❌ MySQL failed to start"
-      #       exit 1
-      #     fi
-      #     echo "✅ Proceeding with migrations"
+          if ! mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
+            echo "❌ MySQL failed to start"
+            exit 1
+          fi
+          echo "✅ Proceeding with migrations"
 
-      # - name: Test MySQL Connection
-      #   run: mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT NOW();"
+      - name: Test MySQL Connection
+        run: mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT NOW();"
 
       - name: Run Migrations
         working-directory: ./backend
