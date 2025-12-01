@@ -1,105 +1,110 @@
 name: CI/CD - Django + React + GKE + Terraform
-on: 
- push: 
-  branches: ["main"] 
- pull_request: 
-  branches: ["main"]
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
 
-ci-tests:
-  runs-on: ubuntu-latest
-  env:
-    IMAGE_TAG: ${{ github.run_number }}
-    SECRET_KEY: ${{ secrets.SECRET_KEY }}
-    MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
-    MYSQL_USER: ${{ secrets.MYSQL_USER }}
-    MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-    MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
-    DB_NAME: ${{ secrets.MYSQL_DATABASE }}
-    DB_USER: ${{ secrets.MYSQL_USER }}
-    DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-    DB_HOST: mysql
-    EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
-    EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
+jobs:
+  ci-tests:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ github.run_number }}
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+      MYSQL_USER: ${{ secrets.MYSQL_USER }}
+      MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+      DB_NAME: ${{ secrets.MYSQL_DATABASE }}
+      DB_USER: ${{ secrets.MYSQL_USER }}
+      DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      DB_HOST: mysql
+      EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
+      EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
 
-  services:
-    mysql:
-      image: mysql:8.0
-      env:
-        MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
-        MYSQL_DATABASE: $MYSQL_DATABASE
-        MYSQL_USER: $MYSQL_USER
-        MYSQL_PASSWORD: $MYSQL_PASSWORD
-      options: >-
-        --health-cmd="mysqladmin ping -h localhost --password=$MYSQL_ROOT_PASSWORD"
-        --health-interval=10s
-        --health-timeout=5s
-        --health-retries=5
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
+          MYSQL_DATABASE: $MYSQL_DATABASE
+          MYSQL_USER: $MYSQL_USER
+          MYSQL_PASSWORD: $MYSQL_PASSWORD
+        options: >-
+          --health-cmd="mysqladmin ping -h mysql --user=$MYSQL_USER --password=$MYSQL_PASSWORD"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
-    redis:
-      image: redis:latest
+      redis:
+        image: redis:latest
 
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
 
-    # -------------------------
-    # Backend tests
-    # -------------------------
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.12"
+      # -------------------------
+      # Backend setup
+      # -------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Install Backend Dependencies
-      working-directory: ./backend
-      run: pip install -r requirements.txt
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: pip install -r requirements.txt
 
-    - name: Wait for MySQL
-      run: |
-        echo "⏳ Waiting for MySQL to be ready..."
-        for i in {1..30}; do
-          if mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
-            echo "✅ MySQL ready"
-            break
+      - name: Wait for MySQL
+        run: |
+          echo "⏳ Waiting for MySQL to be ready..."
+          for i in {1..30}; do
+            if mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
+              echo "✅ MySQL ready"
+              break
+            fi
+            echo "⏳ MySQL not ready ($i/30)"
+            sleep 5
+          done
+
+          if ! mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
+            echo "❌ MySQL failed to start"
+            exit 1
           fi
-          echo "⏳ MySQL not ready ($i/30)"
-          sleep 5
-        done
-        echo "✅ Proceeding with migrations"
+          echo "✅ Proceeding with migrations"
 
-    - name: Test MySQL Connection
-      run: mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT NOW();"
+      - name: Test MySQL Connection
+        run: mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT NOW();"
 
-    - name: Run Migrations
-      working-directory: ./backend
-      run: python manage.py migrate
+      - name: Run Migrations
+        working-directory: ./backend
+        run: python manage.py migrate
 
-    - name: Run Backend Tests
-      working-directory: ./backend
-      run: python manage.py test
+      - name: Run Backend Tests
+        working-directory: ./backend
+        run: python manage.py test
 
-    # -------------------------
-    # Frontend tests
-    # -------------------------
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
+      # -------------------------
+      # Frontend setup
+      # -------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-    - name: Install Frontend Dependencies
-      working-directory: ./frontend
-      run: npm install
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm install
 
-    - name: Run Frontend Tests
-      working-directory: ./frontend
-      run: npm run test -- --run
+      - name: Run Frontend Tests
+        working-directory: ./frontend
+        run: npm run test -- --ci --run
 
-    - name: Build Frontend
-      working-directory: ./frontend
-      run: npm run build
-  # -----------------------------
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: npm run build  # -----------------------------
   # 🚀 JOB 2 : BUILD + DEPLOY (CD)
   # -----------------------------
   # cd-deploy:
