@@ -9,15 +9,46 @@ jobs:
   ci-tests:
     runs-on: ubuntu-latest
     env:
-      # Variables conservées (non liées à la base de données)
+      # Variables d'environnement pour l'application Django
       IMAGE_TAG: ${{ github.run_number }}
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      DB_NAME: ${{ secrets.MYSQL_DATABASE }}
+      DB_USER: ${{ secrets.MYSQL_USER }}
+      DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      DB_HOST: mysql # L'hôte pour le service MySQL est 'mysql'
       EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
       EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
       
-    # SUPPRIMÉ : Le bloc 'services' complet (MySQL et Redis ont été retirés)
-    # Les tests backend utiliseront SQLite en mémoire.
-    # Les tests frontend sont isolés.
+      # Variables pour le script d'attente/connexion MySQL
+      MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          # Variables d'initialisation du conteneur
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+        ports:
+          - 3306:3306
+        options: >-
+          # CORRECTION : Utilisation de la variable d'environnement $MYSQL_ROOT_PASSWORD du conteneur
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD}"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       # -------------------------
@@ -29,7 +60,7 @@ jobs:
           submodules: true
 
       # -------------------------
-      # Backend setup (Tests Django)
+      # Backend setup
       # -------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -40,18 +71,39 @@ jobs:
         working-directory: ./backend
         run: pip install -r requirements.txt
       
-      # SUPPRIMÉ : L'étape 'Wait for MySQL' est inutile.
-      # SUPPRIMÉ : L'étape 'Run Migrations' est inutile, 
-      # car Django exécute automatiquement les migrations 
-      # sur la base de données de test en mémoire (SQLite).
+      # CORRECTION APPLIQUÉE : Attente avec l'utilisateur 'root' pour garantir la connexion
+      - name: ⏳ Wait for MySQL (as root) to be ready
+        run: |
+          echo "⏳ Waiting for MySQL to be ready..."
+          set +e 
+          
+          # Attendre la connectivité en utilisant l'utilisateur ROOT
+          for i in {1..40}; do
+            # Utilisation de l'utilisateur "root"
+            if mysqladmin ping -h mysql -u"root" -p"$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
+              echo "✅ MySQL ready (Root connection established)"
+              exit 0 # Succès
+            fi
+            echo "⏳ MySQL not ready ($i/40)"
+            sleep 3 
+          done
+          
+          echo "❌ MySQL failed to start after 120 seconds"
+          exit 1
+        env:
+          # Assurez-vous que le mot de passe root est passé au script
+          MYSQL_ROOT_PASSWORD: ${{ env.MYSQL_ROOT_PASSWORD }}
+          
+      - name: Run Migrations
+        working-directory: ./backend
+        run: python manage.py migrate
 
       - name: Run Backend Tests
         working-directory: ./backend
-        # Django exécute les tests sur une base de données de test SQLite en mémoire
         run: python manage.py test
 
       # -------------------------
-      # Frontend setup (Tests React)
+      # Frontend setup
       # -------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -64,7 +116,6 @@ jobs:
 
       - name: Run Frontend Tests
         working-directory: ./frontend
-        # Assurez-vous que les tests s'exécutent en mode CI non-interactif
         run: npm run test -- --ci --watchAll=false 
 
       - name: Build Frontend
