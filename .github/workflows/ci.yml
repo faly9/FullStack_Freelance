@@ -7,26 +7,24 @@ on:
     branches: ["main"]
 
 jobs:
+  # -------------------------
+  # 1️⃣ CI : Tests Backend & Frontend
+  # -------------------------
   ci-tests:
     runs-on: ubuntu-latest
     env:
-      CI: true   # 🔥 Active SQLite dans Django automatiquement
+      CI: true   # Active SQLite dans Django automatiquement
       SECRET_KEY: test-secret
       EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
       EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
 
     steps:
-      # -------------------------
-      # Checkout
-      # -------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-         submodules: true
+          submodules: true
 
-      # -------------------------
-      # Backend setup (Django)
-      # -------------------------
+      # Backend
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -36,17 +34,15 @@ jobs:
         working-directory: ./backend
         run: pip install -r requirements.txt
 
-      - name: Run Django migrations (SQLite)
+      - name: Run Django migrations
         working-directory: ./backend
         run: python manage.py migrate
 
-      - name: Run backend tests (SQLite)
+      - name: Run backend tests
         working-directory: ./backend
         run: python manage.py test
 
-      # -------------------------
-      # Frontend setup (React)
-      # -------------------------
+      # Frontend
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -65,78 +61,68 @@ jobs:
         run: npm run build
 
   # -------------------------
-  # 2️⃣ CD : Build + Deploy
+  # 2️⃣ CD : Build Docker & Deploy sur GKE
   # -------------------------
-cd-deploy:
-  needs: ci-tests
-  runs-on: ubuntu-latest
-  env:
-    IMAGE_TAG: ${{ github.run_number }}
+  cd-deploy:
+    needs: ci-tests
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ github.run_number }}
 
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
 
-    # 🔑 Authentification à Google Cloud
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+      # Authentification Google Cloud
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-    - name: Setup gcloud
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-        version: 'latest'
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          version: 'latest'
 
-    - name: Configure Artifact Registry
-      run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
 
-    # -------------------------
-    # Build & Push Docker Images
-    # -------------------------
-    - name: Build Backend Image
-      working-directory: ./backend
-      run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend:${IMAGE_TAG} .
+      # Build & Push Docker Images
+      - name: Build Backend Docker Image
+        working-directory: ./backend
+        run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend:${IMAGE_TAG} .
 
-    - name: Push Backend Image
-      run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend:${IMAGE_TAG}
+      - name: Push Backend Docker Image
+        run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend:${IMAGE_TAG}
 
-    - name: Build Frontend Image
-      working-directory: ./frontend
-      run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend:${IMAGE_TAG} .
+      - name: Build Frontend Docker Image
+        working-directory: ./frontend
+        run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend:${IMAGE_TAG} .
 
-    - name: Push Frontend Image
-      run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend:${IMAGE_TAG}
+      - name: Push Frontend Docker Image
+        run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend:${IMAGE_TAG}
 
-    # -------------------------
-    # Connecter à GKE
-    # -------------------------
-    - name: Connect to GKE
-      run: |
-        gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
-          --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
-          --project ${{ secrets.GCP_PROJECT_ID }}
+      # Connect to GKE
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
+            --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
+            --project ${{ secrets.GCP_PROJECT_ID }}
 
-    - name: Install gke-gcloud-auth-plugin
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+      # Installer le plugin GKE pour kubectl
+      - name: Install gke-gcloud-auth-plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet
 
-    - name: Enable kubectl plugin
-      run: |
-        gcloud components install gke-gcloud-auth-plugin
-
-    # -------------------------
-    # Déployer avec envsubst
-    # -------------------------
-    - name: Apply Kubernetes Manifests with IMAGE_TAG
-      working-directory: ./k8s
-      run: |
-        export IMAGE_TAG=${IMAGE_TAG}
-        for file in $(find . -name '*-template.yaml'); do
-          envsubst < $file > ${file/-template.yaml/.yaml}
-        done
-        kubectl apply -R -f .
+      # Déploiement Kubernetes avec envsubst
+      - name: Apply Kubernetes Manifests with IMAGE_TAG
+        working-directory: ./k8s
+        run: |
+          export IMAGE_TAG=${IMAGE_TAG}
+          for file in $(find . -name '*-template.yaml'); do
+            envsubst < $file > ${file/-template.yaml/.yaml}
+          done
+          kubectl apply -R -f .
