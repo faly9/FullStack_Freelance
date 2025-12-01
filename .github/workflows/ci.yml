@@ -1,13 +1,4 @@
-name: CI/CD - Django + React + GKE + Terraform
-
-on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
-
 jobs:
-
   # -----------------------------
   # 🔍 JOB 1 : TESTS (CI)
   # -----------------------------
@@ -35,9 +26,11 @@ jobs:
           MYSQL_DATABASE: $MYSQL_DATABASE
           MYSQL_USER: $MYSQL_USER
           MYSQL_PASSWORD: $MYSQL_PASSWORD
+          MYSQL_ROOT_HOST: '%'
         ports:
           - 3306:3306
         options: >-
+          --default-authentication-plugin=mysql_native_password
           --health-cmd="mysqladmin ping -h mysql --password=$MYSQL_ROOT_PASSWORD"
           --health-interval=10s
           --health-timeout=5s
@@ -70,15 +63,13 @@ jobs:
         run: |
           echo "⏳ Waiting for MySQL to be ready..."
           for i in {1..60}; do
-            if mysqladmin ping -h mysql --user=$MYSQL_USER --password=$MYSQL_PASSWORD > /dev/null 2>&1; then
+            if mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
               echo "✅ MySQL ready"
-              exit 0
+              break
             fi
-            echo "⏳ MySQL not ready..."
+            echo "⏳ MySQL not ready ($i/60)"
             sleep 5
           done
-          echo "❌ MySQL failed to start"
-          exit 1
 
       - name: Run Migrations
         working-directory: ./backend
@@ -107,7 +98,6 @@ jobs:
       - name: Build Frontend
         working-directory: ./frontend
         run: npm run build
-
   # -----------------------------
   # 🚀 JOB 2 : BUILD + DEPLOY (CD)
   # -----------------------------
