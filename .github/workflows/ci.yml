@@ -26,14 +26,14 @@ jobs:
       mysql:
         image: mysql:8.0
         env:
-          MYSQL_ROOT_PASSWORD: faly09+/+
+          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
           MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
           MYSQL_USER: ${{ secrets.MYSQL_USER }}
           MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -pfaly09+/+"
+          --health-cmd="mysqladmin ping -h localhost -p${{ secrets.MYSQL_ROOT_PASSWORD }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -49,6 +49,9 @@ jobs:
           --health-retries=5
 
     steps:
+      # -------------------------
+      # Checkout
+      # -------------------------
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -66,18 +69,18 @@ jobs:
         working-directory: ./backend
         run: pip install -r requirements.txt
 
-
-      - name: ⏳ Attente que MySQL démarre
+      - name: ⏳ Wait for MySQL to be ready
         run: |
-          for i in {1..6}; do
-            if mysqladmin ping -h 127.0.0.1 -uroot -pfaly09+/+ > /dev/null 2>&1; then
-              exit 0
+          echo "⏳ Waiting for MySQL to be ready..."
+          for i in {1..30}; do
+            if mysqladmin ping -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" > /dev/null 2>&1; then
+              echo "✅ MySQL ready"
+              break
             fi
-            sleep 10
+            echo "⏳ MySQL not ready ($i/30)"
+            sleep 5
           done
-          exit 1
-                
-                
+
       - name: Run Migrations
         working-directory: ./backend
         run: python manage.py migrate
@@ -104,7 +107,9 @@ jobs:
 
       - name: Build Frontend
         working-directory: ./frontend
-        run: npm run build  # -----------------------------
+        run: npm run build
+        
+  # -----------------------------
   # 🚀 JOB 2 : BUILD + DEPLOY (CD)
   # -----------------------------
   # cd-deploy:
