@@ -68,7 +68,8 @@ jobs:
 
       - name: Wait for MySQL
         run: |
-          for i in {1..15}; do
+          echo "⏳ Waiting for MySQL to be ready..."
+          for i in {1..30}; do
             if mysqladmin ping -h mysql --user=$MYSQL_USER --password=$MYSQL_PASSWORD > /dev/null 2>&1; then
               echo "✅ MySQL ready"
               exit 0
