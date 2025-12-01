@@ -1,4 +1,5 @@
 name: CI/CD - Django + React + GKE + Terraform
+
 on:
   push:
     branches: ["main"]
@@ -9,116 +10,55 @@ jobs:
   ci-tests:
     runs-on: ubuntu-latest
     env:
-      # Variables d'environnement pour l'application Django
-      IMAGE_TAG: ${{ github.run_number }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      DB_NAME: ${{ secrets.MYSQL_DATABASE }}
-      DB_USER: ${{ secrets.MYSQL_USER }}
-      DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      DB_HOST: mysql # L'hôte pour le service MySQL est 'mysql'
+      CI: true   # 🔥 Active SQLite dans Django automatiquement
+      SECRET_KEY: test-secret
       EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
       EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
-      
-      # Variables pour le script d'attente/connexion MySQL
-      MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          # Variables d'initialisation du conteneur
-          MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
-          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
-          MYSQL_USER: ${{ secrets.MYSQL_USER }}
-          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-        ports:
-          - 3306:3306
-        options: >-
-          # CORRECTION : Utilisation de la variable d'environnement $MYSQL_ROOT_PASSWORD du conteneur
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD}"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
 
     steps:
       # -------------------------
       # Checkout
       # -------------------------
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
       # -------------------------
-      # Backend setup
+      # Backend setup (Django)
       # -------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install Backend Dependencies
+      - name: Install backend dependencies
         working-directory: ./backend
         run: pip install -r requirements.txt
-      
-      # CORRECTION APPLIQUÉE : Attente avec l'utilisateur 'root' pour garantir la connexion
-      - name: ⏳ Wait for MySQL (as root) to be ready
-        run: |
-          echo "⏳ Waiting for MySQL to be ready..."
-          set +e 
-          
-          # Attendre la connectivité en utilisant l'utilisateur ROOT
-          for i in {1..40}; do
-            # Utilisation de l'utilisateur "root"
-            if mysqladmin ping -h mysql -u"root" -p"$MYSQL_ROOT_PASSWORD" > /dev/null 2>&1; then
-              echo "✅ MySQL ready (Root connection established)"
-              exit 0 # Succès
-            fi
-            echo "⏳ MySQL not ready ($i/40)"
-            sleep 3 
-          done
-          
-          echo "❌ MySQL failed to start after 120 seconds"
-          exit 1
-        env:
-          # Assurez-vous que le mot de passe root est passé au script
-          MYSQL_ROOT_PASSWORD: ${{ env.MYSQL_ROOT_PASSWORD }}
-          
-      - name: Run Migrations
+
+      - name: Run Django migrations (SQLite)
         working-directory: ./backend
         run: python manage.py migrate
 
-      - name: Run Backend Tests
+      - name: Run backend tests (SQLite)
         working-directory: ./backend
         run: python manage.py test
 
       # -------------------------
-      # Frontend setup
+      # Frontend setup (React)
       # -------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install Frontend Dependencies
+      - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm install
 
-      - name: Run Frontend Tests
+      - name: Run frontend tests
         working-directory: ./frontend
         run: npm run test -- --ci --watchAll=false 
 
-      - name: Build Frontend
+      - name: Build frontend
         working-directory: ./frontend
         run: npm run build
   # -----------------------------
