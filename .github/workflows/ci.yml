@@ -26,18 +26,27 @@ jobs:
       mysql:
         image: mysql:8.0
         env:
-          MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
-          MYSQL_DATABASE: $MYSQL_DATABASE
-          MYSQL_USER: $MYSQL_USER
-          MYSQL_PASSWORD: $MYSQL_PASSWORD
+          MYSQL_ROOT_PASSWORD: faly09+/+
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+        ports:
+          - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h mysql --user=$MYSQL_USER --password=$MYSQL_PASSWORD"
+          --health-cmd="mysqladmin ping -h localhost -pfaly09+/+"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
 
       redis:
         image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       - name: Checkout
@@ -57,27 +66,18 @@ jobs:
         working-directory: ./backend
         run: pip install -r requirements.txt
 
-      - name: Wait for MySQL
+
+      - name: ⏳ Attente que MySQL démarre
         run: |
-          echo "⏳ Waiting for MySQL to be ready..."
-          for i in {1..150}; do
-            if mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
-              echo "✅ MySQL ready"
-              break
+          for i in {1..6}; do
+            if mysqladmin ping -h 127.0.0.1 -uroot -pfaly09+/+ > /dev/null 2>&1; then
+              exit 0
             fi
-            echo "⏳ MySQL not ready ($i/150)"
-            sleep 5
+            sleep 10
           done
-
-          if ! mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
-            echo "❌ MySQL failed to start"
-            exit 1
-          fi
-          echo "✅ Proceeding with migrations"
-
-      - name: Test MySQL Connection
-        run: mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT NOW();"
-
+          exit 1
+                
+                
       - name: Run Migrations
         working-directory: ./backend
         run: python manage.py migrate
