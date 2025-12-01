@@ -1,4 +1,4 @@
-name: CI/CD - Django + React + Redis + MySQL + GKE + Terraform
+name: CI/CD - Django + React + GKE + Terraform
 
 on:
   push:
@@ -7,26 +7,12 @@ on:
     branches: ["main"]
 
 jobs:
-  build-test:
-    runs-on: ubuntu-latest
 
-    env:
-      IMAGE_TAG: ${{ github.run_number }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
-      MYSQL_USER: ${{ secrets.MYSQL_USER }}
-      MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      DB_NAME: ${{ secrets.MYSQL_DATABASE }}
-      DB_USER: ${{ secrets.MYSQL_USER }}
-      DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      DB_HOST: 127.0.0.1
-      EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
-      EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
-      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-      REGION: ${{ secrets.GCP_REGION }}
-      REPO: ${{ secrets.GCP_REPOSITORY }}
-      CLUSTER_NAME: ${{ secrets.GCP_CLUSTER_NAME }}
-      CLUSTER_ZONE: ${{ secrets.GCP_CLUSTER_ZONE }}
+  # -----------------------------
+  # 🔍 JOB 1 : TESTS (CI)
+  # -----------------------------
+  ci-tests:
+    runs-on: ubuntu-latest
 
     services:
       mysql:
@@ -39,7 +25,7 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -p${{ secrets.MYSQL_ROOT_PASSWORD }}"
+          --health-cmd="mysqladmin ping -h localhost --password=${{ secrets.MYSQL_ROOT_PASSWORD }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -48,39 +34,16 @@ jobs:
         image: redis:latest
         ports:
           - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
 
     steps:
-      # -----------------------------
-      # 🧩 Checkout
-      # -----------------------------
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: true
 
-      # -----------------------------
-      # 🔧 Terraform Init & Apply
-      # -----------------------------
-      - name: Terraform Init
-        working-directory: ./terraform-clusters
-        run: terraform init
-
-      - name: Terraform Plan
-        working-directory: ./terraform-clusters
-        run: terraform plan -out=tfplan
-
-      - name: Terraform Apply
-        working-directory: ./terraform-clusters
-        run: terraform apply -auto-approve tfplan
-
-      # -----------------------------
-      # 🐍 Python Backend
-      # -----------------------------
+      # -------------------------
+      # Backend tests
+      # -------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -92,90 +55,107 @@ jobs:
 
       - name: Wait for MySQL
         run: |
-          for i in {1..6}; do
-            if mysqladmin ping -h 127.0.0.1 -uroot -p${{ secrets.MYSQL_ROOT_PASSWORD }} > /dev/null 2>&1; then
+          for i in {1..10}; do
+            if mysqladmin ping -h 127.0.0.1 --password="${{ secrets.MYSQL_ROOT_PASSWORD }}" > /dev/null 2>&1; then
               exit 0
             fi
-            sleep 10
+            echo "⏳ MySQL not ready..."
+            sleep 5
           done
           exit 1
 
-      - name: Django Migrations
-        working-directory: ./backend
+      - name: Run Migrations
+        working-directory: backend
         run: python manage.py migrate
 
-      - name: Backend Tests
-        working-directory: ./backend
-        run: |
-          daphne -b 0.0.0.0 -p 8000 backend.asgi:application &
-          python manage.py test
+      - name: Run Backend Tests
+        working-directory: backend
+        run: python manage.py test
 
-      # -----------------------------
-      # 🧰 Node.js Frontend
-      # -----------------------------
+      # -------------------------
+      # Frontend tests
+      # -------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 20
 
       - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: npm install patch-package
+        working-directory: frontend
+        run: npm install
 
-      - name: Build Frontend (Vite)
-        working-directory: ./frontend
-        env:
-          VITE_API_URL: http://localhost:8000
-          VITE_WS_URL: ws://localhost:8000
+      - name: Run Frontend Tests
+        working-directory: frontend
+        run: npm run test -- --run
+
+      - name: Build Frontend
+        working-directory: frontend
         run: npm run build
 
-      # -----------------------------
-      # 🔐 Google Cloud Authentication
-      # -----------------------------
-      - name: Auth to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+  # -----------------------------
+  # 🚀 JOB 2 : BUILD + DEPLOY (CD)
+  # -----------------------------
+  # cd-deploy:
+  #   needs: ci-tests
+  #   runs-on: ubuntu-latest
 
-      - name: Setup gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+  #   env:
+  #     IMAGE_TAG: ${{ github.run_number }}
 
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker $REGION-docker.pkg.dev
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
 
-      # -----------------------------
-      # 🐳 Build & Push Docker Images
-      # -----------------------------
-      - name: Build Backend Image
-        run: docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/backend:${IMAGE_TAG} ./backend
+  #     # -------------------------
+  #     # Google Auth
+  #     # -------------------------
+  #     - name: Auth to Google Cloud
+  #       uses: google-github-actions/auth@v2
+  #       with:
+  #         credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Push Backend Image
-        run: docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/backend:${IMAGE_TAG}
+  #     - name: Setup gcloud
+  #       uses: google-github-actions/setup-gcloud@v2
+  #       with:
+  #         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Build Frontend Image
-        run: docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/frontend:${IMAGE_TAG} ./frontend
+  #     - name: Configure Artifact Registry
+  #       run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
 
-      - name: Push Frontend Image
-        run: docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/frontend:${IMAGE_TAG}
+  #     # -------------------------
+  #     # Docker Images
+  #     # -------------------------
+  #     - name: Build Backend Image
+  #       run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend:${IMAGE_TAG} backend
 
-      # -----------------------------
-      # 📝 Update Kubernetes Manifests
-      # -----------------------------
-      - name: Update Kubernetes Manifests
-        run: |
-          sed -i "s|image: .*/backend:.*|image: $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/backend:${IMAGE_TAG}|" k8s/Backend/deployment.yaml
-          sed -i "s|image: .*/frontend:.*|image: $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/frontend:${IMAGE_TAG}|" k8s/Frontend/deployment.yaml
+  #     - name: Push Backend Image
+  #       run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend:${IMAGE_TAG}
 
-      # -----------------------------
-      # 🚀 Deploy to GKE
-      # -----------------------------
-      - name: Connect to GKE Cluster
-        run: |
-          gcloud container clusters get-credentials $CLUSTER_NAME \
-            --zone $CLUSTER_ZONE \
-            --project $PROJECT_ID
+  #     - name: Build Frontend Image
+  #       run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend:${IMAGE_TAG} frontend
 
-      - name: Apply Kubernetes Manifests
-        run: kubectl apply -f ./k8s --recursive
+  #     - name: Push Frontend Image
+  #       run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend:${IMAGE_TAG}
+
+  #     # -------------------------
+  #     # Terraform
+  #     # -------------------------
+  #     - name: Terraform Init
+  #       working-directory: terraform-clusters
+  #       run: terraform init
+
+  #     - name: Terraform Apply
+  #       working-directory: terraform-clusters
+  #       run: terraform apply -auto-approve
+
+  #     # -------------------------
+  #     # Deploy to GKE
+  #     # -------------------------
+  #     - name: Connect to GKE
+  #       run: |
+  #         gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
+  #           --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
+  #           --project ${{ secrets.GCP_PROJECT_ID }}
+
+  #     - name: Apply Kubernetes Manifests
+  #       run: kubectl apply -f k8s --recursive
