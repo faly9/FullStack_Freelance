@@ -77,6 +77,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+         submodules: true 
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
@@ -91,12 +93,14 @@ jobs:
       # Build & Push Docker Images
       # -------------------------
       - name: Build Backend Image
+        working-directory: ./backend
         run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend:${IMAGE_TAG} ./backend
 
       - name: Push Backend Image
         run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend:${IMAGE_TAG}
 
       - name: Build Frontend Image
+        working-directory: ./frontend
         run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend:${IMAGE_TAG} ./frontend
 
       - name: Push Frontend Image
