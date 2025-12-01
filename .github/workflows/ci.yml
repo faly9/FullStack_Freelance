@@ -31,7 +31,7 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost --password=${{ secrets.MYSQL_ROOT_PASSWORD }}"
+          --health-cmd="mysqladmin ping -h localhost --password=$MYSQL_ROOT_PASSWORD"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -71,11 +71,11 @@ jobs:
           exit 1
 
       - name: Run Migrations
-        working-directory: backend
+        working-directory: ./backend
         run: python manage.py migrate
 
       - name: Run Backend Tests
-        working-directory: backend
+        working-directory: ./backend
         run: python manage.py test
 
       # -------------------------
@@ -87,15 +87,15 @@ jobs:
           node-version: 20
 
       - name: Install Frontend Dependencies
-        working-directory: frontend
+        working-directory: ./frontend
         run: npm install
 
       - name: Run Frontend Tests
-        working-directory: frontend
+        working-directory: ./frontend
         run: npm run test -- --run
 
       - name: Build Frontend
-        working-directory: frontend
+        working-directory: ./frontend
         run: npm run build
 
   # -----------------------------
