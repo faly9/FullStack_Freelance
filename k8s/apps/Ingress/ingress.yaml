@@ -5,6 +5,7 @@ metadata:
   namespace: freelance
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
+    kubernetes.io/ingress.class: "gce"
 spec:
   ingressClassName: nginx
   rules:
