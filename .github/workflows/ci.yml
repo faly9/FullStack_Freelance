@@ -22,7 +22,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-        submodules: true
+         submodules: true
 
       # -------------------------
       # Backend setup (Django)
