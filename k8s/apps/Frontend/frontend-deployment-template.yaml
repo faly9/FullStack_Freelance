@@ -33,7 +33,7 @@ spec:
           ']
       containers:
         - name: frontend
-          image: us-central1-docker.pkg.dev/soutenance-479118/freelance-repo/frontend-app:latest
+          image: us-central1-docker.pkg.dev/soutenance-479118/freelance-repo/frontend-app:${IMAGE_TAG}
           imagePullPolicy: Always
           ports:
             - containerPort: 80
