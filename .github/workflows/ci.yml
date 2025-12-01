@@ -5,104 +5,100 @@ on:
  pull_request: 
   branches: ["main"]
 
-jobs:
-  # -----------------------------
-  # 🔍 JOB 1 : TESTS (CI)
-  # -----------------------------
-  ci-tests:
-    runs-on: ubuntu-latest
-    env:
-      IMAGE_TAG: ${{ github.run_number }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
-      MYSQL_USER: ${{ secrets.MYSQL_USER }}
-      MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
-      DB_NAME: ${{ secrets.MYSQL_DATABASE }}
-      DB_USER: ${{ secrets.MYSQL_USER }}
-      DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
-      DB_HOST: mysql
-      EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
-      EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
+ci-tests:
+  runs-on: ubuntu-latest
+  env:
+    IMAGE_TAG: ${{ github.run_number }}
+    SECRET_KEY: ${{ secrets.SECRET_KEY }}
+    MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+    MYSQL_USER: ${{ secrets.MYSQL_USER }}
+    MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+    MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+    DB_NAME: ${{ secrets.MYSQL_DATABASE }}
+    DB_USER: ${{ secrets.MYSQL_USER }}
+    DB_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+    DB_HOST: mysql
+    EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
+    EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
 
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
-          MYSQL_DATABASE: $MYSQL_DATABASE
-          MYSQL_USER: $MYSQL_USER
-          MYSQL_PASSWORD: $MYSQL_PASSWORD
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h mysql --password=$MYSQL_ROOT_PASSWORD"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+  services:
+    mysql:
+      image: mysql:8.0
+      env:
+        MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
+        MYSQL_DATABASE: $MYSQL_DATABASE
+        MYSQL_USER: $MYSQL_USER
+        MYSQL_PASSWORD: $MYSQL_PASSWORD
+      options: >-
+        --health-cmd="mysqladmin ping -h localhost --password=$MYSQL_ROOT_PASSWORD"
+        --health-interval=10s
+        --health-timeout=5s
+        --health-retries=5
 
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
+    redis:
+      image: redis:latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: true
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: true
 
-      # -------------------------
-      # Backend tests
-      # -------------------------
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+    # -------------------------
+    # Backend tests
+    # -------------------------
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
 
-      - name: Install Backend Dependencies
-        working-directory: ./backend
-        run: pip install -r requirements.txt
+    - name: Install Backend Dependencies
+      working-directory: ./backend
+      run: pip install -r requirements.txt
 
-      - name: Wait for MySQL
-        run: |
-          echo "⏳ Waiting for MySQL to be ready..."
-          for i in {1..60}; do
-            if mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
-              echo "✅ MySQL ready"
-              break
-            fi
-            echo "⏳ MySQL not ready ($i/60)"
-            sleep 5
-          done
+    - name: Wait for MySQL
+      run: |
+        echo "⏳ Waiting for MySQL to be ready..."
+        for i in {1..30}; do
+          if mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT 1;" > /dev/null 2>&1; then
+            echo "✅ MySQL ready"
+            break
+          fi
+          echo "⏳ MySQL not ready ($i/30)"
+          sleep 5
+        done
+        echo "✅ Proceeding with migrations"
 
-      - name: Run Migrations
-        working-directory: ./backend
-        run: python manage.py migrate
+    - name: Test MySQL Connection
+      run: mysql -h mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT NOW();"
 
-      - name: Run Backend Tests
-        working-directory: ./backend
-        run: python manage.py test
+    - name: Run Migrations
+      working-directory: ./backend
+      run: python manage.py migrate
 
-      # -------------------------
-      # Frontend tests
-      # -------------------------
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    - name: Run Backend Tests
+      working-directory: ./backend
+      run: python manage.py test
 
-      - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: npm install
+    # -------------------------
+    # Frontend tests
+    # -------------------------
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
 
-      - name: Run Frontend Tests
-        working-directory: ./frontend
-        run: npm run test -- --run
+    - name: Install Frontend Dependencies
+      working-directory: ./frontend
+      run: npm install
 
-      - name: Build Frontend
-        working-directory: ./frontend
-        run: npm run build
+    - name: Run Frontend Tests
+      working-directory: ./frontend
+      run: npm run test -- --run
+
+    - name: Build Frontend
+      working-directory: ./frontend
+      run: npm run build
   # -----------------------------
   # 🚀 JOB 2 : BUILD + DEPLOY (CD)
   # -----------------------------
