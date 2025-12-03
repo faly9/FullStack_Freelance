@@ -6,25 +6,38 @@ on:
   pull_request:
     branches: ["main"]
 
+# -------------------------------
+# Schéma logique du CI/CD
+# -------------------------------
+# Checkout repository
+# ├─ Backend
+# │  ├─ Install dependencies
+# │  ├─ Migrate DB
+# │  ├─ Unit tests (pytest -m unit)
+# │  └─ Integration tests (pytest -m integration)
+# └─ Frontend
+#    ├─ Install dependencies
+#    ├─ Unit tests (vitest)
+#    ├─ E2E tests (playwright)
+#    └─ Build
+
 jobs:
   # -------------------------
-  # 1️⃣ CI : Tests Backend & Frontend
+  # CI Backend
   # -------------------------
-  ci-tests:
+  backend:
     runs-on: ubuntu-latest
     env:
-      CI: true   # Active SQLite dans Django automatiquement
+      CI: true
       SECRET_KEY: test-secret
       EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
       EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: true
 
-      # Backend
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -38,11 +51,24 @@ jobs:
         working-directory: ./backend
         run: python manage.py migrate
 
-      - name: Run backend tests
+      - name: Run backend unit tests
         working-directory: ./backend
-        run: python manage.py test
+        run: pytest -m unit --maxfail=1 --disable-warnings -v
 
-      # Frontend
+      - name: Run backend integration tests
+        working-directory: ./backend
+        run: pytest -m integration --maxfail=1 --disable-warnings -v
+
+  # -------------------------
+  # CI Frontend
+  # -------------------------
+  frontend:
+    runs-on: ubuntu-latest
+    needs: backend   # optionnel : attend que backend soit ok
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -52,9 +78,13 @@ jobs:
         working-directory: ./frontend
         run: npm install
 
-      - name: Run frontend tests
+      - name: Run frontend unit tests
         working-directory: ./frontend
-        run: npm run test -- --run
+        run: npx vitest --run
+
+      - name: Run frontend E2E tests
+        working-directory: ./frontend
+        run: npx playwright test --reporter=list,html
 
       - name: Build frontend
         working-directory: ./frontend
@@ -63,66 +93,66 @@ jobs:
   # -------------------------
   # 2️⃣ CD : Build Docker & Deploy sur GKE
   # -------------------------
-  cd-deploy:
-    needs: ci-tests
-    runs-on: ubuntu-latest
-    env:
-      IMAGE_TAG: ${{ github.run_number }}
+  # cd-deploy:
+  #   needs: ci-tests
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     IMAGE_TAG: ${{ github.run_number }}
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: true
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #       with:
+  #         submodules: true
 
-      # Authentification Google Cloud
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+  #     # Authentification Google Cloud
+  #     - name: Authenticate to Google Cloud
+  #       uses: google-github-actions/auth@v1
+  #       with:
+  #         credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Setup gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          version: 'latest'
+  #     - name: Setup gcloud CLI
+  #       uses: google-github-actions/setup-gcloud@v2
+  #       with:
+  #         project_id: ${{ secrets.GCP_PROJECT_ID }}
+  #         version: 'latest'
 
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
+  #     - name: Configure Docker for Artifact Registry
+  #       run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
 
-      # Build & Push Docker Images
-      - name: Build Backend Docker Image
-        working-directory: ./backend
-        run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG} .
+  #     # Build & Push Docker Images
+  #     - name: Build Backend Docker Image
+  #       working-directory: ./backend
+  #       run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG} .
 
-      - name: Push Backend Docker Image
-        run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG}
+  #     - name: Push Backend Docker Image
+  #       run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG}
 
-      - name: Build Frontend Docker Image
-        working-directory: ./frontend
-        run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG} .
+  #     - name: Build Frontend Docker Image
+  #       working-directory: ./frontend
+  #       run: docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG} .
 
-      - name: Push Frontend Docker Image
-        run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG}
+  #     - name: Push Frontend Docker Image
+  #       run: docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG}
 
-      # Connect to GKE
-      - name: Get GKE credentials
-        run: |
-          gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
-            --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
-            --project ${{ secrets.GCP_PROJECT_ID }}
+  #     # Connect to GKE
+  #     - name: Get GKE credentials
+  #       run: |
+  #         gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
+  #           --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
+  #           --project ${{ secrets.GCP_PROJECT_ID }}
 
-      # Installer le plugin GKE pour kubectl
-      - name: Install gke-gcloud-auth-plugin
-        run: |
-          gcloud components install gke-gcloud-auth-plugin --quiet
+  #     # Installer le plugin GKE pour kubectl
+  #     - name: Install gke-gcloud-auth-plugin
+  #       run: |
+  #         gcloud components install gke-gcloud-auth-plugin --quiet
 
-      # Déploiement Kubernetes avec envsubst
-      - name: Apply Kubernetes Manifests with IMAGE_TAG
-        working-directory: ./k8s
-        run: |
-          export IMAGE_TAG=${IMAGE_TAG}
-          for file in $(find . -name '*-template.yaml'); do
-            envsubst < $file > ${file/-template.yaml/.yaml}
-          done
-          kubectl apply -R -f .
+  #     # Déploiement Kubernetes avec envsubst
+  #     - name: Apply Kubernetes Manifests with IMAGE_TAG
+  #       working-directory: ./k8s
+  #       run: |
+  #         export IMAGE_TAG=${IMAGE_TAG}
+  #         for file in $(find . -name '*-template.yaml'); do
+  #           envsubst < $file > ${file/-template.yaml/.yaml}
+  #         done
+  #         kubectl apply -R -f .
