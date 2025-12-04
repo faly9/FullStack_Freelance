@@ -107,9 +107,9 @@ jobs:
         working-directory: ./frontend
         run: npm run build
 
-  -------------------------
-  2️⃣ CD : Build Docker & Deploy sur GKE
-  -------------------------
+  #-------------------------
+ #2️⃣ CD : Build Docker & Deploy sur GKE
+  #-------------------------
   cd-deploy:
     needs: ci-tests
     runs-on: ubuntu-latest
