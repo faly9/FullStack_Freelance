@@ -3,10 +3,12 @@ kind: Service
 metadata:
   name: frontend
   namespace: freelance
+  annotations:
+    cloud.google.com/load-balancer-type: "136.116.238.53"
 spec:
   selector:
     app: frontend
   ports:
     - port: 80
       targetPort: 80
-  type: ClusterIP
+  type: loadBalancer

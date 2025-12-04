@@ -6,7 +6,7 @@ metadata:
 data:
   config.json: |
     {
-      "API_URL": "http://freelance.stage:80",          
-      "WEBSOCKET_API_URL": "ws://freelance.stage:80",
+      "API_URL": "http://136.116.238.53:80",          
+      "WEBSOCKET_API_URL": "ws://136.116.238.53:80",
       "MEDIA_URL": "https://storage.googleapis.com/freelance-media/media"
     }
