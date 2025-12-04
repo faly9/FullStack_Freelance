@@ -9,6 +9,6 @@ spec:
   selector:
     app: frontend
   ports:
-    - port: 80        # port publi
+    - port: 80        # port f
       targetPort: 80  # port sur lequel Nginx écoute dans le Pod
   type: LoadBalancer
