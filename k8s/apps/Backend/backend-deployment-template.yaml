@@ -21,11 +21,11 @@ spec:
             - containerPort: 8000
           resources:
             requests:
-              memory: "200Mi"
-              cpu: "200m"
+              memory: "300Mi"
+              cpu: "250m"
             limits:
-              memory: "250Mi"
-              cpu: "300m"
+              memory: "350Mi"
+              cpu: "350m"
           envFrom:
             - configMapRef:
                 name: backend-config
