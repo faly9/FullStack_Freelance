@@ -1,4 +1,4 @@
-name: CI - Django + React
+name: CI/CD - Django + React + GKE + Terraform
 
 on:
   pull_request:
@@ -6,9 +6,9 @@ on:
 
 jobs:
 
-  # ================================
-  # CI BACKEND - Django
-  # ================================
+  # =======================================================
+  # 1️⃣ CI BACKEND - Django (pytest)
+  # =======================================================
   backend:
     runs-on: ubuntu-latest
     env:
@@ -34,17 +34,17 @@ jobs:
         working-directory: ./backend
         run: python manage.py migrate
 
-      - name: Run unit tests
+      - name: Run backend unit tests
         working-directory: ./backend
         run: pytest -m unit -v
 
-      - name: Run integration tests
+      - name: Run backend integration tests
         working-directory: ./backend
         run: pytest -m integration -v
 
-  # ================================
-  # CI FRONTEND - React
-  # ================================
+  # =======================================================
+  # 2️⃣ CI FRONTEND - React (Vitest + Playwright)
+  # =======================================================
   frontend:
     runs-on: ubuntu-latest
     needs: backend
@@ -62,7 +62,7 @@ jobs:
         working-directory: ./frontend
         run: npm install
 
-      - name: Install Playwright
+      - name: Install Playwright browsers
         working-directory: ./frontend
         run: npx playwright install
 
@@ -70,10 +70,18 @@ jobs:
         working-directory: ./frontend
         run: npm run build
 
+      - name: Serve for Playwright E2E tests
+        working-directory: ./frontend
+        run: npx serve -s dist -l 5173 &
+
+      - name: Wait for frontend
+        run: npx wait-on http://localhost:5173
+
       - name: Run unit tests
         working-directory: ./frontend
         run: npx vitest --run
 
-      - name: Run E2E tests
+      - name: Run E2E tests with Playwright
         working-directory: ./frontend
-        run: npx playwright test
+        run: npx playwright test --reporter=list,html
+
