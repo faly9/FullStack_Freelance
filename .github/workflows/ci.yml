@@ -1,16 +1,14 @@
-name: CI/CD - Django + React + GKE + Terraform
+name: CI - Django + React
 
 on:
-  push:
-    branches: ["main"]
   pull_request:
     branches: ["main"]
 
 jobs:
 
-  # =======================================================
-  # 1️⃣ CI BACKEND - Django (pytest)
-  # =======================================================
+  # ================================
+  # CI BACKEND - Django
+  # ================================
   backend:
     runs-on: ubuntu-latest
     env:
@@ -36,17 +34,17 @@ jobs:
         working-directory: ./backend
         run: python manage.py migrate
 
-      - name: Run backend unit tests
+      - name: Run unit tests
         working-directory: ./backend
         run: pytest -m unit -v
 
-      - name: Run backend integration tests
+      - name: Run integration tests
         working-directory: ./backend
         run: pytest -m integration -v
 
-  # =======================================================
-  # 2️⃣ CI FRONTEND - React (Vitest + Playwright)
-  # =======================================================
+  # ================================
+  # CI FRONTEND - React
+  # ================================
   frontend:
     runs-on: ubuntu-latest
     needs: backend
@@ -64,7 +62,7 @@ jobs:
         working-directory: ./frontend
         run: npm install
 
-      - name: Install Playwright browsers
+      - name: Install Playwright
         working-directory: ./frontend
         run: npx playwright install
 
@@ -72,91 +70,10 @@ jobs:
         working-directory: ./frontend
         run: npm run build
 
-      - name: Serve for Playwright E2E tests
-        working-directory: ./frontend
-        run: npx serve -s dist -l 5173 &
-
-      - name: Wait for frontend
-        run: npx wait-on http://localhost:5173
-
       - name: Run unit tests
         working-directory: ./frontend
         run: npx vitest --run
 
-      - name: Run E2E tests with Playwright
+      - name: Run E2E tests
         working-directory: ./frontend
-        run: npx playwright test --reporter=list,html
-
-  # =======================================================
-  # 3️⃣ CD - Build Docker images and deploy to GKE
-  # =======================================================
-  cd-deploy:
-    needs: [backend, frontend]
-    runs-on: ubuntu-latest
-    env:
-      IMAGE_TAG: ${{ github.run_number }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true  
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Configure Docker for Artifact Registry
-        run: |
-          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
-
-      # -------------------------------------------------
-      # Build & Push Backend
-      # -------------------------------------------------
-      - name: Build backend image
-        working-directory: ./backend
-        run: |
-          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG} .
-
-      - name: Push backend image
-        run: |
-          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG}
-
-      # -------------------------------------------------
-      # Build & Push Frontend
-      # -------------------------------------------------
-      - name: Build frontend image
-        working-directory: ./frontend
-        run: |
-          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG} .
-
-      - name: Push frontend image
-        run: |
-          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG}
-
-      # -------------------------------------------------
-      # Deploy to GKE
-      # -------------------------------------------------
-      - name: Get GKE credentials
-        run: |
-          gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
-          --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
-          --project ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Install gke-gcloud-auth-plugin
-        run: |
-          gcloud components install gke-gcloud-auth-plugin --quiet
-
-      - name: Apply Kubernetes manifests
-        working-directory: ./k8s
-        run: |
-          export IMAGE_TAG=${IMAGE_TAG}
-          for file in $(find . -name '*-template.yaml'); do
-            envsubst < $file > ${file/-template.yaml/.yaml}
-          done
-          kubectl apply -R -f .
+        run: npx playwright test

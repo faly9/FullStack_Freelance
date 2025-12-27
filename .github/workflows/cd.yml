@@ -1,0 +1,73 @@
+name: CD - Deploy to GKE
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ github.run_number }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
+
+      # -----------------------------
+      # Build & Push Backend
+      # -----------------------------
+      - name: Build backend image
+        working-directory: ./backend
+        run: |
+          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG} .
+
+      - name: Push backend image
+        run: |
+          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG}
+
+      # -----------------------------
+      # Build & Push Frontend
+      # -----------------------------
+      - name: Build frontend image
+        working-directory: ./frontend
+        run: |
+          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG} .
+
+      - name: Push frontend image
+        run: |
+          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG}
+
+      # -----------------------------
+      # Deploy to GKE
+      # -----------------------------
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
+          --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
+          --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Apply Kubernetes manifests
+        working-directory: ./k8s
+        run: |
+          export IMAGE_TAG=${IMAGE_TAG}
+          for file in $(find . -name '*-template.yaml'); do
+            envsubst < $file > ${file/-template.yaml/.yaml}
+          done
+          kubectl apply -R -f .
