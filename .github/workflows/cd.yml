@@ -5,23 +5,29 @@ on:
     branches: ["main"]
 
 jobs:
-
-  # =======================================================
-  # 3️⃣ CD - Build Docker images and deploy to GKE
-  # =======================================================
   cd-deploy:
-    needs: [backend, frontend]
     runs-on: ubuntu-latest
+
     env:
       IMAGE_TAG: ${{ github.run_number }}
+      REGISTRY: ${{ secrets.GCP_REGION }}-docker.pkg.dev
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REPOSITORY: ${{ secrets.GCP_REPOSITORY }}
 
     steps:
-      - uses: actions/checkout@v4
+      # -------------------------------------------------
+      # Checkout (avec submodules)
+      # -------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          submodules: true  
+          submodules: recursive
 
+      # -------------------------------------------------
+      # Auth GCP
+      # -------------------------------------------------
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v1
+        uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
@@ -29,10 +35,14 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: kubectl
 
+      # -------------------------------------------------
+      # Docker auth
+      # -------------------------------------------------
       - name: Configure Docker for Artifact Registry
         run: |
-          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev
+          gcloud auth configure-docker $REGISTRY --quiet
 
       # -------------------------------------------------
       # Build & Push Backend
@@ -40,11 +50,11 @@ jobs:
       - name: Build backend image
         working-directory: ./backend
         run: |
-          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG} .
+          docker build -t $REGISTRY/$PROJECT_ID/$REPOSITORY/backend-app:$IMAGE_TAG .
 
       - name: Push backend image
         run: |
-          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/backend-app:${IMAGE_TAG}
+          docker push $REGISTRY/$PROJECT_ID/$REPOSITORY/backend-app:$IMAGE_TAG
 
       # -------------------------------------------------
       # Build & Push Frontend
@@ -52,30 +62,35 @@ jobs:
       - name: Build frontend image
         working-directory: ./frontend
         run: |
-          docker build -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG} .
+          docker build -t $REGISTRY/$PROJECT_ID/$REPOSITORY/frontend-app:$IMAGE_TAG .
 
       - name: Push frontend image
         run: |
-          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_REPOSITORY }}/frontend-app:${IMAGE_TAG}
+          docker push $REGISTRY/$PROJECT_ID/$REPOSITORY/frontend-app:$IMAGE_TAG
 
       # -------------------------------------------------
-      # Deploy to GKE
+      # GKE Auth
       # -------------------------------------------------
-      - name: Get GKE credentials
-        run: |
-          gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
-          --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
-          --project ${{ secrets.GCP_PROJECT_ID }}
-
       - name: Install gke-gcloud-auth-plugin
         run: |
           gcloud components install gke-gcloud-auth-plugin --quiet
 
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ secrets.GCP_CLUSTER_NAME }} \
+            --zone ${{ secrets.GCP_CLUSTER_ZONE }} \
+            --project $PROJECT_ID
+
+      # -------------------------------------------------
+      # Deploy Kubernetes
+      # -------------------------------------------------
+      - name: Install envsubst
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+
       - name: Apply Kubernetes manifests
         working-directory: ./k8s
         run: |
-          export IMAGE_TAG=${IMAGE_TAG}
           for file in $(find . -name '*-template.yaml'); do
-            envsubst < $file > ${file/-template.yaml/.yaml}
+            envsubst < "$file" > "${file/-template.yaml/.yaml}"
           done
           kubectl apply -R -f .
